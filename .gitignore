@@ -1,0 +1,25 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# tests and build
+/coverage
+/test-results
+/playwright-report
+/.next
+/out
+/supabase/.temp
+
+# local secrets
+.env
+.env.local
+.env.*.local
+
+# deployment and OS
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+Thumbs.db
+debug.log

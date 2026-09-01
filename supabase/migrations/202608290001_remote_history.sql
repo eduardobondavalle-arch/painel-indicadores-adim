@@ -1,0 +1,2 @@
+-- Migration previously applied to the linked Supabase project.
+-- Kept locally so the remote migration history remains aligned.
