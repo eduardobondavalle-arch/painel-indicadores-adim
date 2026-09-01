@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -50,6 +51,96 @@ function AccountLink({ profile, compact = false }: { profile: Profile; compact?:
 
 export function DashboardShell({ profile, children }: { profile: Profile; children: React.ReactNode }) {
   const pathname = usePathname();
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const scrollVelocityRef = useRef(0);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
+
+  const updateScrollEdges = useCallback(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+    const maximum = navigation.scrollWidth - navigation.clientWidth;
+    const left = navigation.scrollLeft > 2;
+    const right = maximum > 2 && navigation.scrollLeft < maximum - 2;
+    setScrollEdges((current) => current.left === left && current.right === right ? current : { left, right });
+  }, []);
+
+  const stopEdgeScroll = useCallback(() => {
+    scrollVelocityRef.current = 0;
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
+
+  const runEdgeScroll = useCallback(() => {
+    const navigation = navigationRef.current;
+    const velocity = scrollVelocityRef.current;
+    if (!navigation || velocity === 0) {
+      animationFrameRef.current = null;
+      return;
+    }
+
+    navigation.scrollLeft += velocity;
+    updateScrollEdges();
+
+    const maximum = navigation.scrollWidth - navigation.clientWidth;
+    if ((velocity < 0 && navigation.scrollLeft <= 0) || (velocity > 0 && navigation.scrollLeft >= maximum - 1)) {
+      scrollVelocityRef.current = 0;
+      animationFrameRef.current = null;
+      return;
+    }
+
+    animationFrameRef.current = requestAnimationFrame(runEdgeScroll);
+  }, [updateScrollEdges]);
+
+  const setEdgeScroll = useCallback((velocity: number) => {
+    scrollVelocityRef.current = velocity;
+    if (velocity === 0) {
+      stopEdgeScroll();
+      return;
+    }
+    if (animationFrameRef.current === null) animationFrameRef.current = requestAnimationFrame(runEdgeScroll);
+  }, [runEdgeScroll, stopEdgeScroll]);
+
+  const handleNavigationPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const edgeSize = Math.min(64, bounds.width * 0.2);
+    const distanceFromLeft = event.clientX - bounds.left;
+    const distanceFromRight = bounds.right - event.clientX;
+
+    if (distanceFromLeft < edgeSize && scrollEdges.left) {
+      const strength = 1 - distanceFromLeft / edgeSize;
+      setEdgeScroll(-(2 + strength * 8));
+    } else if (distanceFromRight < edgeSize && scrollEdges.right) {
+      const strength = 1 - distanceFromRight / edgeSize;
+      setEdgeScroll(2 + strength * 8);
+    } else {
+      setEdgeScroll(0);
+    }
+  }, [scrollEdges, setEdgeScroll]);
+
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+    const observer = new ResizeObserver(updateScrollEdges);
+    observer.observe(navigation);
+    navigation.addEventListener("scroll", updateScrollEdges, { passive: true });
+    updateScrollEdges();
+    return () => {
+      observer.disconnect();
+      navigation.removeEventListener("scroll", updateScrollEdges);
+      stopEdgeScroll();
+    };
+  }, [stopEdgeScroll, updateScrollEdges]);
+
+  useEffect(() => {
+    const activeLink = navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    activeLink?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    const timer = window.setTimeout(updateScrollEdges, 300);
+    return () => window.clearTimeout(timer);
+  }, [pathname, updateScrollEdges]);
 
   return (
     <div className="min-h-screen">
@@ -61,25 +152,48 @@ export function DashboardShell({ profile, children }: { profile: Profile; childr
             <p className="label-caps hidden whitespace-nowrap lg:block">Gestão de indicadores</p>
           </div>
 
-          <div className="scroll-x-soft min-w-0 flex-1">
-            <nav className="flex w-max items-center gap-1 rounded-full border border-border/60 bg-secondary/50 p-1" aria-label="Navegação do painel">
-              {links.map(({ href, label, icon: Icon }) => {
-                const active = pathname === href || pathname.startsWith(`${href}/`);
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      "focus-ring press flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-2.5 text-sm text-muted-foreground hover:bg-background/70 hover:text-foreground md:px-3",
-                      active && "bg-[var(--glass-strong)] text-foreground shadow-sm backdrop-blur-xl",
-                    )}
-                  >
-                    <Icon className="size-[18px]" strokeWidth={1.8} />
-                    <span className="hidden md:inline">{label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
+          <div className="relative min-w-0 flex-1">
+            <div
+              ref={navigationRef}
+              className="scroll-x-soft"
+              onPointerMove={handleNavigationPointerMove}
+              onPointerLeave={stopEdgeScroll}
+              onPointerCancel={stopEdgeScroll}
+            >
+              <nav className="flex w-max items-center gap-1 rounded-full border border-border/60 bg-secondary/50 p-1" aria-label="Navegação do painel">
+                {links.map(({ href, label, icon: Icon }) => {
+                  const active = pathname === href || pathname.startsWith(`${href}/`);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "focus-ring press flex h-9 items-center gap-2 whitespace-nowrap rounded-full px-2.5 text-sm text-muted-foreground hover:bg-background/70 hover:text-foreground md:px-3",
+                        active && "bg-[var(--glass-strong)] text-foreground shadow-sm backdrop-blur-xl",
+                      )}
+                    >
+                      <Icon className="size-[18px]" strokeWidth={1.8} />
+                      <span className="hidden md:inline">{label}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+            {scrollEdges.left && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 left-0 z-10 w-10 rounded-l-full"
+                style={{ background: "linear-gradient(90deg, var(--glass-strong), transparent)" }}
+              />
+            )}
+            {scrollEdges.right && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 right-0 z-10 w-10 rounded-r-full"
+                style={{ background: "linear-gradient(270deg, var(--glass-strong), transparent)" }}
+              />
+            )}
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
