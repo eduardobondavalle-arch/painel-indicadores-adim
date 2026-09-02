@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 
-type Row = { id: string; manager_id: string; submitted_manager_name: string; reference_month: number; reference_year: number; values: Record<string, string | number> };
+type Row = { id: string; manager_id: string | null; submitted_manager_name: string; reference_month: number; reference_year: number; values: Record<string, string | number> };
 const metrics = [
   { key: "contratos_ativos_fim_mes", label: "Contratos ativos", format: "number" }, { key: "contratos_renovados", label: "Renovações", format: "number" }, { key: "total_rescisoes", label: "Rescisões", format: "number" },
   { key: "taxa_retencao_desocupados", label: "Retenção de imóveis", format: "percent" }, { key: "chamados_abertos", label: "Chamados", format: "number" }, { key: "taxa_chamados_sla", label: "SLA", format: "percent" },

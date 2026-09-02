@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 type SearchParams = Promise<{ categoria?: string; indicador?: string; gestora?: string; mes?: string; ano?: string }>;
 type ManagerRow = { id: string; name: string };
-type ResponseRow = { id: string; manager_id: string; submitted_manager_name: string; protocol: string; submitted_at: string; consistency_alert_count: number };
+type ResponseRow = { id: string; manager_id: string | null; submitted_manager_name: string; protocol: string; submitted_at: string; consistency_alert_count: number };
 type ValueRow = { response_id: string; value_type: string; value_numeric: number | string | null; value_text: string | null; original_numeric: number | string | null; original_text: string | null };
 
 export default async function IndicatorsPage({ searchParams }: { searchParams: SearchParams }) {

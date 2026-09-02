@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 
 type SearchParams = Promise<{ inicio?: string; fim?: string; gestora?: string }>;
-type ResponseRow = { id: string; manager_id: string; submitted_manager_name: string; reference_month: number; reference_year: number };
+type ResponseRow = { id: string; manager_id: string | null; submitted_manager_name: string; reference_month: number; reference_year: number };
 type ValueRow = { response_id: string; indicator_key: string; value_type: string; value_numeric: number | string | null; value_text: string | null };
 type ManagerRow = { id: string; name: string };
 

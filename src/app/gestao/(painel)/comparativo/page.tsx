@@ -6,7 +6,7 @@ import { ReferenceFilter } from "@/components/dashboard/reference-filter";
 import { Button } from "@/components/ui/button";
 
 type SearchParams = Promise<{ mes?: string; ano?: string; gestora?: string }>;
-type ResponseRow = { id: string; manager_id: string; submitted_manager_name: string; submitted_manager_email: string };
+type ResponseRow = { id: string; manager_id: string | null; submitted_manager_name: string; submitted_manager_email: string };
 type ValueRow = { response_id: string; indicator_key: string; value_type: string; value_numeric: number | string | null; value_text: string | null };
 
 export default async function ComparisonPage({ searchParams }: { searchParams: SearchParams }) {

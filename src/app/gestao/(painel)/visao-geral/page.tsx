@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>;
 type ValueRow = { indicator_key: string; value_numeric: number | string | null };
-type ResponseRow = { manager_id: string; submitted_at: string; consistency_alert_count: number; response_values: ValueRow[] };
+type ResponseRow = { manager_id: string | null; submitted_at: string; consistency_alert_count: number; response_values: ValueRow[] };
 type ManagerRow = { id: string; name: string; email: string };
 
 export default async function OverviewPage({ searchParams }: { searchParams: SearchParams }) {

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Select } from "@/components/ui/select";
 
-type ManagerData = { id: string; managerId: string; name: string; email: string; values: Record<string, string | number> };
+type ManagerData = { id: string; managerId: string | null; name: string; email: string; values: Record<string, string | number> };
 
 export function ComparisonView({ data, highlightedManager }: { data: ManagerData[]; highlightedManager?: string }) {
   const numericIndicators = INDICATORS.filter((indicator) => indicator.type !== "text");

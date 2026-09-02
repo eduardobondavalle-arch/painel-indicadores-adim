@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth";
 
 const schema = z.object({ id: z.uuid().optional(), name: z.string().trim().min(3), email: z.email().transform((value) => value.toLowerCase()), joinedOn: z.iso.date(), notes: z.string().max(3000), active: z.boolean() });
+const deleteSchema = z.object({ id: z.uuid(), deleteData: z.boolean() });
 
 async function handle(request: NextRequest, update: boolean) {
   const auth = await requireAdminApi();
@@ -22,3 +23,25 @@ async function handle(request: NextRequest, update: boolean) {
 }
 export async function POST(request: NextRequest) { return handle(request, false); }
 export async function PATCH(request: NextRequest) { return handle(request, true); }
+
+export async function DELETE(request: NextRequest) {
+  const auth = await requireAdminApi();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  try {
+    const body = deleteSchema.parse(await request.json());
+    const result = await auth.supabase.rpc("delete_manager", {
+      p_manager_id: body.id,
+      p_delete_data: body.deleteData,
+    });
+    if (result.error) return NextResponse.json({ error: result.error.message }, { status: 400 });
+    const summary = result.data as { deleted_responses?: number; preserved_responses?: number } | null;
+    return NextResponse.json({
+      ok: true,
+      deletedResponses: Number(summary?.deleted_responses ?? 0),
+      preservedResponses: Number(summary?.preserved_responses ?? 0),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return NextResponse.json({ error: "Gestora ou tipo de exclusão inválido." }, { status: 422 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível excluir a gestora." }, { status: 500 });
+  }
+}
