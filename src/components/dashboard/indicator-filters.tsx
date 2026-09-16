@@ -1,34 +1,29 @@
-"use client";
-
-import { useMemo, useState } from "react";
 import { Filter } from "lucide-react";
-import { BLOCKS, INDICATORS } from "@/lib/indicators";
+import { BLOCKS } from "@/lib/indicators";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 
 type Manager = { id: string; name: string };
 
-export function IndicatorFilters({ block, indicatorKey, managerId, month, year, managers }: { block: number; indicatorKey: string; managerId: string; month: number; year: number; managers: Manager[] }) {
-  const [selectedBlock, setSelectedBlock] = useState(block);
-  const [selectedIndicator, setSelectedIndicator] = useState(indicatorKey);
-  const availableIndicators = useMemo(() => INDICATORS.filter((indicator) => indicator.block === selectedBlock), [selectedBlock]);
-  const years = Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index);
-
-  function changeBlock(value: number) {
-    setSelectedBlock(value);
-    setSelectedIndicator(INDICATORS.find((indicator) => indicator.block === value)?.key ?? "");
-  }
+export function IndicatorFilters({ block, managerId, month, year, managers, availableYears }: {
+  block: number;
+  managerId: string;
+  month: number;
+  year: number;
+  managers: Manager[];
+  availableYears: number[];
+}) {
+  const years = [...new Set([
+    year,
+    ...availableYears,
+    ...Array.from({ length: 8 }, (_, index) => new Date().getFullYear() + 1 - index),
+  ])].sort((a, b) => b - a);
 
   return (
-    <form className="panel grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[1.2fr_2fr_1.4fr_1fr_1fr_auto]">
+    <form className="panel grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[1.5fr_1.4fr_1fr_1fr_auto]">
       <FilterField label="Categoria">
-        <Select name="categoria" value={selectedBlock} onChange={(event) => changeBlock(Number(event.target.value))}>
+        <Select name="categoria" defaultValue={block}>
           {BLOCKS.map((item) => <option key={item.number} value={item.number}>Bloco {item.number} — {item.title}</option>)}
-        </Select>
-      </FilterField>
-      <FilterField label="Indicador">
-        <Select name="indicador" value={selectedIndicator} onChange={(event) => setSelectedIndicator(event.target.value)}>
-          {availableIndicators.map((indicator) => <option key={indicator.key} value={indicator.key}>{indicator.number}. {indicator.label}</option>)}
         </Select>
       </FilterField>
       <FilterField label="Gestora">
