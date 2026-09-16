@@ -14,7 +14,6 @@ test("mostra todos os indicadores do bloco sem seleção individual", async ({ p
   await expect(page.locator('section[aria-labelledby^="indicator-"]')).toHaveCount(11);
 
   await page.getByLabel("Categoria").selectOption("2");
-  await page.getByRole("button", { name: "Aplicar filtros" }).click();
 
   await expect(page).toHaveURL(/categoria=2/);
   await expect(page.locator('section[aria-labelledby^="indicator-"]')).toHaveCount(9);

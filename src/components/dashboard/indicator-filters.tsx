@@ -1,3 +1,5 @@
+"use client";
+
 import { Filter } from "lucide-react";
 import { BLOCKS } from "@/lib/indicators";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ export function IndicatorFilters({ block, managerId, month, year, managers, avai
   return (
     <form className="panel grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-[1.5fr_1.4fr_1fr_1fr_auto]">
       <FilterField label="Categoria">
-        <Select name="categoria" defaultValue={block}>
+        <Select name="categoria" defaultValue={block} onChange={(event) => event.currentTarget.form?.requestSubmit()}>
           {BLOCKS.map((item) => <option key={item.number} value={item.number}>Bloco {item.number} — {item.title}</option>)}
         </Select>
       </FilterField>
