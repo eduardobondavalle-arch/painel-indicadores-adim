@@ -9,7 +9,28 @@ export type SubmissionInput = {
   referenceYear: number;
   confirmedReview: boolean;
   values: RawIndicatorValues;
+  bonusInputs?: PublicBonusInputs;
 };
+
+export type PublicBonusInputs = {
+  eligible_renewals: number;
+  adjustments_due: number;
+  adjustments_on_time: number;
+  eligible_vacancies: number;
+  maintenance_csat: number;
+  owner_satisfaction_scale: "nps";
+  tenant_satisfaction_scale: "nps";
+};
+
+const bonusInputSchema = z.object({
+  eligible_renewals: z.coerce.number().int().nonnegative(),
+  adjustments_due: z.coerce.number().int().nonnegative(),
+  adjustments_on_time: z.coerce.number().int().nonnegative(),
+  eligible_vacancies: z.coerce.number().int().nonnegative(),
+  maintenance_csat: z.coerce.number().min(1).max(5),
+  owner_satisfaction_scale: z.literal("nps"),
+  tenant_satisfaction_scale: z.literal("nps"),
+});
 
 const baseSchema = z.object({
   managerName: z.string().trim().min(3, "Informe o nome completo da gestora."),
@@ -18,6 +39,7 @@ const baseSchema = z.object({
   referenceYear: z.coerce.number().int().min(2020).max(2100),
   confirmedReview: z.literal(true, { error: "Confirme que os dados foram conferidos." }),
   values: z.record(z.string(), z.union([z.string(), z.number()])),
+  bonusInputs: bonusInputSchema.optional(),
 });
 
 export function parseBrazilianNumber(value: string | number): number {
@@ -55,6 +77,15 @@ export function parseSubmission(input: unknown): SubmissionInput {
     .reduce((sum, key) => sum + (parseBrazilianNumber(parsed.values[key] ?? 0) || 0), 0);
   if (complaintTotal > 0 && !String(parsed.values.descricao_reclamacoes ?? "").trim()) {
     issues.push({ code: "custom", path: ["values", "descricao_reclamacoes"], message: "Descreva as reclamações registradas.", input: parsed.values.descricao_reclamacoes });
+  }
+  if (parsed.bonusInputs) {
+    const extra = parsed.bonusInputs;
+    const compare = (condition: boolean, field: string, message: string) => {
+      if (condition) issues.push({ code: "custom", path: ["bonusInputs", field], message, input: extra[field as keyof PublicBonusInputs] });
+    };
+    compare(extra.adjustments_on_time > extra.adjustments_due, "adjustments_on_time", "Os reajustes corretos não podem superar os devidos.");
+    compare(extra.eligible_renewals < (parseBrazilianNumber(parsed.values.renovacoes_taxa_cobrada ?? 0) || 0), "eligible_renewals", "As renovações elegíveis não podem ser inferiores às taxas cobradas.");
+    compare(extra.eligible_vacancies < (parseBrazilianNumber(parsed.values.desocupados_permaneceram_adim ?? 0) || 0), "eligible_vacancies", "As desocupações elegíveis não podem ser inferiores às retidas.");
   }
   if (issues.length) throw new z.ZodError(issues);
   return parsed;

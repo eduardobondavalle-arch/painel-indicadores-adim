@@ -22,10 +22,32 @@ type FormData = {
   referenceYear: number;
   confirmedReview: boolean;
   values: Record<string, string>;
+  bonusInputs: {
+    eligible_renewals: string;
+    adjustments_due: string;
+    adjustments_on_time: string;
+    eligible_vacancies: string;
+    maintenance_csat: string;
+    owner_satisfaction_scale: "nps";
+    tenant_satisfaction_scale: "nps";
+  };
 };
 type SubmissionResult = { protocol: string; submitted_at: string };
 
 const DRAFT_KEY = "adim-indicadores-draft-v1";
+const emptyBonusInputs = (): FormData["bonusInputs"] => ({
+  eligible_renewals: "", adjustments_due: "", adjustments_on_time: "", eligible_vacancies: "",
+  maintenance_csat: "", owner_satisfaction_scale: "nps", tenant_satisfaction_scale: "nps",
+});
+const extraFields = {
+  1: [
+    { key: "eligible_renewals", label: "Renovações elegíveis à cobrança de taxa (conforme contrato)", hint: "Não inclua contratos sem previsão da taxa de renovação." },
+    { key: "adjustments_due", label: "Reajustes contratuais devidos no mês", hint: "Total de reajustes que deveriam ocorrer." },
+    { key: "adjustments_on_time", label: "Reajustes corretos e aplicados no prazo", hint: "Dos reajustes devidos, quantos foram aplicados corretamente e no prazo." },
+  ],
+  2: [{ key: "eligible_vacancies", label: "Desocupações elegíveis para retenção", hint: "Exclua venda, uso próprio e sucessão; inclua os imóveis que permaneceram na Adim." }],
+  3: [{ key: "maintenance_csat", label: "CSAT médio pós-manutenção (escala 1 a 5)", hint: "CSAT é diferente do NPS de manutenção informado acima; não converta automaticamente." }],
+} as const;
 const monthName = (month: number) => new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(2024, month - 1, 1));
 
 function currencyMask(value: string) {
@@ -57,7 +79,7 @@ export function PublicIndicatorForm() {
   const [result, setResult] = useState<SubmissionResult | null>(null);
   const hydrated = useRef(false);
   const { register, control, watch, getValues, reset } = useForm<FormData>({
-    defaultValues: { managerName: "", managerEmail: "", referenceMonth: currentMonth, referenceYear: currentYear, confirmedReview: false, values: blankIndicatorValues() },
+    defaultValues: { managerName: "", managerEmail: "", referenceMonth: currentMonth, referenceYear: currentYear, confirmedReview: false, values: blankIndicatorValues(), bonusInputs: emptyBonusInputs() },
   });
 
   useEffect(() => {
@@ -73,6 +95,7 @@ export function PublicIndicatorForm() {
           referenceYear: Number(persisted.referenceYear ?? legacyPeriod[1] ?? currentYear),
           confirmedReview: false,
           values: { ...blankIndicatorValues(), ...(persisted.values ?? {}) },
+          bonusInputs: { ...emptyBonusInputs(), ...(persisted.bonusInputs ?? {}), owner_satisfaction_scale: "nps", tenant_satisfaction_scale: "nps" },
         });
       }
     } catch {
@@ -113,6 +136,18 @@ export function PublicIndicatorForm() {
       const error = validateIndicator(indicator, data.values[indicator.key]);
       if (error) errors[indicator.key] = error;
     }
+    if (blockNumber <= 3) {
+      for (const field of extraFields[blockNumber as 1 | 2 | 3]) {
+        const raw = data.bonusInputs[field.key];
+        const number = Number(raw);
+        if (raw === "" || !Number.isFinite(number) || number < (field.key === "maintenance_csat" ? 1 : 0) ||
+          number > (field.key === "maintenance_csat" ? 5 : Number.MAX_SAFE_INTEGER) ||
+          (field.key !== "maintenance_csat" && !Number.isInteger(number))) errors[field.key] = "Informe um valor válido para a régua de bônus.";
+      }
+    }
+    if (blockNumber === 1 && Number(data.bonusInputs.adjustments_on_time) > Number(data.bonusInputs.adjustments_due)) errors.adjustments_on_time = "Não pode superar os reajustes devidos.";
+    if (blockNumber === 1 && Number(data.bonusInputs.eligible_renewals) < Number(data.values.renovacoes_taxa_cobrada || 0)) errors.eligible_renewals = "Não pode ser menor que as taxas cobradas.";
+    if (blockNumber === 2 && Number(data.bonusInputs.eligible_vacancies) < Number(data.values.desocupados_permaneceram_adim || 0)) errors.eligible_vacancies = "Não pode ser menor que os imóveis retidos.";
     if (blockNumber === 4) {
       const complaints = ["reclamacoes_google", "reclamacoes_reclame_aqui", "reclamacoes_diretoria"]
         .reduce((sum, key) => sum + Number(data.values[key] || 0), 0);
@@ -166,6 +201,7 @@ export function PublicIndicatorForm() {
           referenceYear: Number(data.referenceYear),
           confirmedReview: data.confirmedReview,
           values: data.values,
+          bonusInputs: data.bonusInputs,
         }),
       });
       const body = await response.json();
@@ -258,6 +294,19 @@ export function PublicIndicatorForm() {
                 <IndicatorField key={indicator.key} indicator={indicator} control={control} error={fieldErrors[indicator.key]} />
               ))}
             </div>
+            {step < 3 && <section className="mt-8 rounded-2xl border border-orange-200 bg-orange-50/40 p-4 sm:p-5">
+              <h3 className="font-semibold text-foreground">Dados complementares para os 15 KPIs oficiais</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Os 55 campos operacionais acima continuam preservados. Estes dados permitem calcular a régua sem estimar percentuais.</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">{extraFields[currentBlock.number as 1 | 2 | 3].map(field => (
+                <div key={field.key}><Label htmlFor={field.key}>{field.label}</Label><Input id={field.key} type="number" min={field.key === "maintenance_csat" ? 1 : 0} max={field.key === "maintenance_csat" ? 5 : undefined} step={field.key === "maintenance_csat" ? 0.01 : 1}
+                  {...register(`bonusInputs.${field.key}`)} /><p className="mt-1 text-xs text-muted-foreground">{field.hint}</p>
+                  {fieldErrors[field.key] && <p className="mt-1 text-xs text-red-600">{fieldErrors[field.key]}</p>}</div>
+              ))}</div>
+            </section>}
+            {step === 3 && <section className="mt-8 rounded-2xl border border-orange-200 bg-orange-50/40 p-4 sm:p-5">
+              <h3 className="font-semibold text-foreground">Escala das pesquisas de satisfação</h3>
+              <p className="mt-1 text-xs text-muted-foreground">As pesquisas de proprietários e locatários são NPS 0–100 na régua oficial; não misture CSAT com NPS. O CSAT pós-manutenção é informado separadamente na escala 1 a 5.</p>
+            </section>}
           </CardContent>
         </Card>
       )}
@@ -343,6 +392,7 @@ function Review({ data, alerts, onEdit }: { data: FormData; alerts: ReturnType<t
           <CardHeader className="flex-row items-center justify-between border-b border-slate-100"><div><p className="text-xs font-bold uppercase tracking-wide text-[#d96c12]">Bloco {block.number}</p><CardTitle className="mt-1">{block.title}</CardTitle></div><Button type="button" variant="ghost" size="sm" onClick={() => onEdit(block.number)}>Editar</Button></CardHeader>
           <CardContent className="divide-y divide-slate-100">
             {indicatorsForBlock(block.number).map((indicator) => <div key={indicator.key} className="grid gap-1 py-3 sm:grid-cols-[1fr_220px] sm:gap-6"><p className="text-sm text-slate-600"><span className="mr-1 font-bold text-[#d96c12]">{indicator.number}.</span>{indicator.label}</p><p className="break-words text-sm font-bold text-[#102b4e] sm:text-right">{indicatorValueForDisplay(indicator, data.values[indicator.key])}</p></div>)}
+          {block.number <= 3 && extraFields[block.number as 1 | 2 | 3].map(field => <div key={field.key} className="border-t py-3 text-sm">{field.label}: <strong>{data.bonusInputs[field.key]}</strong></div>)}
           </CardContent>
         </Card>
       ))}

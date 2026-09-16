@@ -9,9 +9,10 @@ export async function POST(request: NextRequest) {
   if (length > 150_000) return NextResponse.json({ error: "Envio maior que o limite permitido." }, { status: 413 });
   try {
     const input = parseSubmission(await request.json());
+    if (!input.bonusInputs) return NextResponse.json({ error: "Preencha os dados complementares da bonificação." }, { status: 422 });
     const alerts = getConsistencyAlerts(input.values);
     const supabase = createPublicClient();
-    const { data, error } = await supabase.rpc("submit_monthly_response", {
+    const { data, error } = await supabase.rpc("submit_monthly_response_v2", {
       p_manager_name: input.managerName,
       p_manager_email: input.managerEmail,
       p_reference_month: input.referenceMonth,
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
       p_confirmed_review: input.confirmedReview,
       p_values: serializeIndicatorValues(input.values),
       p_alerts: alerts,
+      p_bonus_inputs: input.bonusInputs,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 409 });
     return NextResponse.json(data, { status: 201 });

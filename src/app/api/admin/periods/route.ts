@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdminApi } from "@/lib/auth";
+import { loadPerformance } from "@/lib/performance-data";
 
 const createSchema = z.object({
   month: z.number().int().min(1).max(12),
@@ -78,6 +79,20 @@ export async function PATCH(request: NextRequest) {
 
     const current = currentResult.data as PeriodRow;
     const nextStatus = body.status ?? current.status;
+    if (nextStatus === "closed" && current.status !== "closed") {
+      if (current.status !== "open") return NextResponse.json({ error: "Abra o período antes de fechá-lo." }, { status: 422 });
+      const active = await auth.supabase.from("responses").select("id,period_id").eq("period_id", body.id).in("status", ["submitted", "reopened"]);
+      if (active.error) throw active.error;
+      const performance = await loadPerformance(auth.supabase, active.data ?? []);
+      const versionId = performance.frozenVersions.get(body.id) ?? performance.liveVersionId;
+      if (!versionId) return NextResponse.json({ error: "Régua oficial ainda não versionada." }, { status: 422 });
+      const pending = (active.data ?? []).find(row => performance.results.get(row.id)?.score === null);
+      if (pending) return NextResponse.json({ error: "Existem respostas sem dados suficientes para calcular o score; preencha os dados complementares antes do fechamento." }, { status: 422 });
+      const { error } = await auth.supabase.rpc("close_period_with_scores", { p_period_id: body.id, p_version_id: versionId,
+        p_results: (active.data ?? []).map(row => ({ response_id: row.id, result: performance.results.get(row.id) })) });
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ ok: true, period: { ...current, status: "closed", accept_late: false } });
+    }
     const nextClosesAt = body.closesAt === undefined ? current.closes_at : body.closesAt;
     const now = new Date();
     const opensAt = current.opens_at ?? (nextStatus === "open" ? now.toISOString() : null);

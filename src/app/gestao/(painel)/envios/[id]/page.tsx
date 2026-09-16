@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import { AlertTriangle, Calculator, FileClock, LockKeyhole } from "lucide-react";
 import { requireStaff } from "@/lib/auth";
+import { loadPerformance } from "@/lib/performance-data";
+import type { PerformanceResult } from "@/lib/scoring";
+import { BonusInputEditor } from "@/components/dashboard/bonus-input-editor";
+import { PerformanceBreakdown } from "@/components/dashboard/performance-breakdown";
 import { calculateMetrics, rateDivergences } from "@/lib/calculations";
 import { BLOCKS, INDICATOR_BY_KEY } from "@/lib/indicators";
 import { formatNumber, formatPercent } from "@/lib/utils";
@@ -13,7 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 type ValueRow = { indicator_key: string; indicator_number: number; block_number: number; label: string; value_type: string; value_numeric: number | string | null; value_text: string | null; original_numeric: number | string | null; original_text: string | null };
 type AlertRow = { id: string; code: string; message: string; created_at: string };
 type HistoryRow = { id: string; field_key: string; old_value: unknown; new_value: unknown; justification: string; changed_at: string; admin_users: { display_name: string; email: string } | null };
-type ResponseRow = { id: string; submitted_manager_name: string; submitted_manager_email: string; reference_month: number; reference_year: number; protocol: string; status: string; submitted_at: string; updated_at: string; administrative_notes: string | null; consistency_alert_count: number };
+type SnapshotRow = { revision: number; created_at: string; result: PerformanceResult };
+type ResponseRow = { id: string; period_id: string; submitted_manager_name: string; submitted_manager_email: string; reference_month: number; reference_year: number; protocol: string; status: string; submitted_at: string; updated_at: string; administrative_notes: string | null; consistency_alert_count: number };
 
 function displayValue(value: ValueRow, original = false) {
   const raw = original ? (value.value_type === "text" ? value.original_text : value.original_numeric) : (value.value_type === "text" ? value.value_text : value.value_numeric);
@@ -35,17 +40,21 @@ function historyValue(value: unknown) {
 export default async function ResponseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { supabase, profile } = await requireStaff();
-  const [responseResult, valuesResult, alertsResult, historyResult] = await Promise.all([
-    supabase.from("responses").select("id,submitted_manager_name,submitted_manager_email,reference_month,reference_year,protocol,status,submitted_at,updated_at,administrative_notes,consistency_alert_count").eq("id", id).maybeSingle(),
+  const [responseResult, valuesResult, alertsResult, historyResult, snapshotsResult] = await Promise.all([
+    supabase.from("responses").select("id,period_id,submitted_manager_name,submitted_manager_email,reference_month,reference_year,protocol,status,submitted_at,updated_at,administrative_notes,consistency_alert_count").eq("id", id).maybeSingle(),
     supabase.from("response_values").select("indicator_key,indicator_number,block_number,label,value_type,value_numeric,value_text,original_numeric,original_text").eq("response_id", id).order("indicator_number"),
     supabase.from("consistency_alerts").select("id,code,message,created_at").eq("response_id", id).order("created_at"),
     supabase.from("change_history").select("id,field_key,old_value,new_value,justification,changed_at,admin_users(display_name,email)").eq("response_id", id).order("changed_at", { ascending: false }),
+    supabase.from("period_scoring_snapshots").select("revision,created_at,result").eq("response_id", id).order("revision", { ascending: false }),
   ]);
   if (!responseResult.data) notFound();
   const response = responseResult.data as ResponseRow;
+  const performance = await loadPerformance(supabase, [response]);
+  const result = performance.results.get(id)!;
   const values = (valuesResult.data ?? []) as ValueRow[];
   const alerts = (alertsResult.data ?? []) as AlertRow[];
   const history = (historyResult.data ?? []) as unknown as HistoryRow[];
+  const snapshots = (snapshotsResult.data ?? []) as SnapshotRow[];
   const valueMap = Object.fromEntries(values.map((value) => [value.indicator_key, value.value_type === "text" ? value.value_text ?? "" : Number(value.value_numeric ?? 0)]));
   const calculated = calculateMetrics(valueMap);
   const divergences = rateDivergences(valueMap);
@@ -55,6 +64,8 @@ export default async function ResponseDetailPage({ params }: { params: Promise<{
     <>
       <PageHeader eyebrow={`Protocolo ${response.protocol}`} title={response.submitted_manager_name} description={`${monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)} • enviado em ${new Date(response.submitted_at).toLocaleString("pt-BR")}`} actions={<ExportButtons responseId={response.id} month={response.reference_month} year={response.reference_year} manager={response.submitted_manager_name} />} />
       <div className="mb-5 grid gap-4 md:grid-cols-4"><InfoCard label="E-mail informado" value={response.submitted_manager_email} /><InfoCard label="Status" value={response.status} /><InfoCard label="Alertas" value={String(response.consistency_alert_count)} /><InfoCard label="Última atualização" value={new Date(response.updated_at).toLocaleString("pt-BR")} /></div>
+      <div className="mb-5"><PerformanceBreakdown result={result} /><BonusInputEditor responseId={id} facts={performance.extras.get(id) ?? { owner_satisfaction_scale: "nps", tenant_satisfaction_scale: "nps" }} canEdit={profile.role === "admin" && ["submitted", "reopened"].includes(response.status)} /></div>
+      {snapshots.length > 0 && <Card className="mb-5"><CardHeader><CardTitle>Histórico da bonificação fechada</CardTitle><p className="text-sm text-slate-500">Revisões imutáveis; parâmetros do fechamento preservados mesmo após mudanças futuras.</p></CardHeader><CardContent className="space-y-2">{snapshots.map(snapshot => <div key={snapshot.revision} className="flex flex-wrap justify-between gap-2 rounded-lg border p-3 text-sm"><span>Revisão {snapshot.revision} · {new Date(snapshot.created_at).toLocaleString("pt-BR")}</span><strong>Score {snapshot.result.score === null ? "Pendente" : `${formatNumber(snapshot.result.score)}%`} · Performance {snapshot.result.bonus === null ? "Pendente" : `R$ ${snapshot.result.bonus}`} · Cash Go {snapshot.result.cashGo === null ? "Pendente" : `R$ ${snapshot.result.cashGo}`}</strong></div>)}</CardContent></Card>}
       {alerts.length > 0 && <Card className="mb-5 border-amber-300 bg-amber-50"><CardHeader><div className="flex gap-3"><AlertTriangle className="size-6 shrink-0 text-amber-700" /><div><CardTitle className="text-amber-900">Alertas confirmados no envio</CardTitle><p className="mt-1 text-sm text-amber-800">Os valores originais foram preservados.</p></div></div></CardHeader><CardContent><ul className="space-y-2 text-sm text-amber-900">{alerts.map((alert) => <li key={alert.id}>• {alert.message}</li>)}</ul></CardContent></Card>}
       <Card className="mb-5 border-blue-200 bg-blue-50/50"><CardHeader><div className="flex items-center gap-3"><Calculator className="size-6 text-[#102b4e]" /><div><CardTitle>Indicadores calculados pelo sistema</CardTitle><p className="mt-1 text-sm text-slate-500">Calculados sem alterar os valores declarados.</p></div></div></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{calculated.map((metric) => <div key={metric.key} className="rounded-xl border border-blue-100 bg-white p-4"><Badge>Calculado pelo sistema</Badge><p className="mt-3 text-sm text-slate-500">{metric.label}</p><p className="mt-1 text-xl font-black text-[#102b4e]">{metric.value == null ? "—" : metric.format === "percent" ? formatPercent(metric.value) : formatNumber(metric.value)}</p></div>)}</CardContent>{divergences.length > 0 && <div className="border-t border-blue-100 px-6 py-4 text-sm font-semibold text-amber-800">{divergences.map((item) => <p key={item.informedKey}>A {item.label} informada ({formatPercent(item.informed)}) diverge da calculada ({formatPercent(item.calculated)}).</p>)}</div>}</Card>
       <div className="space-y-5">

@@ -1,5 +1,8 @@
 import { AlertTriangle, Building2, CalendarCheck2, CheckCircle2, Clock3, HandCoins, Home, RefreshCw, Send, Users, Wrench } from "lucide-react";
 import { requireStaff } from "@/lib/auth";
+import { loadPerformance } from "@/lib/performance-data";
+import { formatCurrency, formatNumber } from "@/lib/utils";
+import Link from "next/link";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ReferenceFilter } from "@/components/dashboard/reference-filter";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -8,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type SearchParams = Promise<{ mes?: string; ano?: string }>;
 type ValueRow = { indicator_key: string; value_numeric: number | string | null };
-type ResponseRow = { manager_id: string | null; submitted_at: string; consistency_alert_count: number; response_values: ValueRow[] };
+type ResponseRow = { id: string; period_id: string; manager_id: string | null; submitted_manager_name: string; submitted_at: string; consistency_alert_count: number; response_values: ValueRow[] };
 type ManagerRow = { id: string; name: string; email: string };
 
 export default async function OverviewPage({ searchParams }: { searchParams: SearchParams }) {
@@ -20,10 +23,11 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
 
   const [managersResult, responsesResult] = await Promise.all([
     supabase.from("managers").select("id,name,email").eq("active", true).order("name"),
-    supabase.from("responses").select("manager_id,submitted_at,consistency_alert_count,response_values(indicator_key,value_numeric)").eq("reference_month", month).eq("reference_year", year).in("status", ["submitted", "reopened"]),
+    supabase.from("responses").select("id,period_id,manager_id,submitted_manager_name,submitted_at,consistency_alert_count,response_values(indicator_key,value_numeric)").eq("reference_month", month).eq("reference_year", year).in("status", ["submitted", "reopened"]),
   ]);
   const managers = (managersResult.data ?? []) as ManagerRow[];
   const responses = (responsesResult.data ?? []) as ResponseRow[];
+  const performance = await loadPerformance(supabase, responses);
   const respondedIds = new Set(responses.map((response) => response.manager_id));
   const responded = managers.filter((manager) => respondedIds.has(manager.id));
   const pending = managers.filter((manager) => !respondedIds.has(manager.id));
@@ -43,6 +47,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Sea
         <StatCard label="Respostas com alertas" value={responses.filter((response) => response.consistency_alert_count > 0).length} icon={AlertTriangle} tone="orange" detail={`${alerts} alerta(s) no total`} />
         <StatCard label="Último envio" value={lastSubmission ? new Date(lastSubmission).toLocaleDateString("pt-BR") : "—"} icon={Clock3} detail={lastSubmission ? new Date(lastSubmission).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Nenhum envio"} />
       </div>
+      {responses.length > 0 && <Card className="mt-6"><CardHeader><CardTitle>Bonificação por gestora</CardTitle><p className="text-sm text-slate-500">Valores verificados; clique para conferir a memória dos 15 KPIs.</p></CardHeader><CardContent className="grid gap-2">{responses.map(row => { const result = performance.results.get(row.id)!; return <Link key={row.id} href={`/gestao/envios/${row.id}`} className="grid gap-2 rounded-xl border p-3 text-sm hover:border-orange-400 md:grid-cols-5"><strong>{row.submitted_manager_name}</strong><span>Score: {result.score === null ? "Pendente" : `${formatNumber(result.score)}%`}</span><span>Performance: {result.bonus === null ? "Pendente" : formatCurrency(result.bonus)}</span><span>Cash Go: {result.cashGo === null ? "Pendente" : formatCurrency(result.cashGo)}</span><strong>Total: {result.total === null ? "Pendente" : formatCurrency(result.total)}</strong></Link>; })}</CardContent></Card>}
       <h2 className="mb-4 mt-8 text-lg font-black text-[#102b4e]">Consolidação declarada</h2>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Contratos administrados" value={sum("contratos_ativos_fim_mes")} icon={Building2} />

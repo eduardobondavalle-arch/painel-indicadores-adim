@@ -16,9 +16,14 @@ test("envio completo gera protocolo e o segundo envio é bloqueado", async ({ pa
     await page.getByLabel("Nome completo da gestora").fill(name);
     await page.getByLabel("E-mail corporativo").fill(email);
     await page.locator("#motivo_nao_renovados").fill("Não se aplica");
+    await page.locator("#eligible_renewals").fill("0");
+    await page.locator("#adjustments_due").fill("0");
+    await page.locator("#adjustments_on_time").fill("0");
     await page.getByRole("button", { name: "Continuar" }).click();
     await page.locator("#motivo_real_perda").fill("Não se aplica");
+    await page.locator("#eligible_vacancies").fill("0");
     await page.getByRole("button", { name: "Continuar" }).click();
+    await page.locator("#maintenance_csat").fill("4.5");
     await page.getByRole("button", { name: "Continuar" }).click();
     await page.getByRole("button", { name: "Continuar" }).click();
     await page.getByRole("button", { name: "Continuar" }).click();
